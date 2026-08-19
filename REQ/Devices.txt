@@ -1,0 +1,440 @@
+Yes — **you absolutely can use Cisco IOL L2/L3 switches and Linux servers for this lab**. In fact, for an EVE-NG-style enterprise lab, that is a very good choice.
+
+The important distinction is this:
+
+> **Cisco IOL L3 is a multilayer switch, not simply a full router replacement in every situation.**
+
+## Recommended device choices
+
+### Switching layer
+
+```text
+HQ-ASW1  → Cisco IOL L2
+HQ-ASW2  → Cisco IOL L2
+
+HQ-DSW1  → Cisco IOL L3
+HQ-DSW2  → Cisco IOL L3
+```
+
+This is ideal because the access switches primarily need Layer 2 features:
+
+* VLANs
+* Access ports
+* 802.1Q trunks
+* EtherChannel
+* STP
+
+The distribution switches need both Layer 2 and Layer 3 features:
+
+* VLANs
+* SVIs
+* Inter-VLAN routing
+* HSRP
+* EtherChannel
+* STP
+* EIGRP/OSPF, depending on the IOL image/features available
+
+So:
+
+```text
+          HQ-DSW1 [IOL L3]
+             ||
+             ||
+          HQ-DSW2 [IOL L3]
+           /         \
+          /           \
+    HQ-ASW1           HQ-ASW2
+     [IOL L2]          [IOL L2]
+```
+
+That part of your lab is a **very good use of IOL switches**.
+
+---
+
+# Can an IOL L3 Switch Act as a Router?
+
+### Yes, for many routing functions.
+
+For example, an IOL L3 switch can typically do things such as:
+
+```text
+ip routing
+```
+
+Then route between SVIs:
+
+```text
+interface vlan 10
+ ip address 10.10.10.2 255.255.255.128
+
+interface vlan 20
+ ip address 10.10.20.2 255.255.255.192
+```
+
+It can also use routed physical interfaces, depending on the image/platform behavior:
+
+```text
+interface Ethernet0/0
+ no switchport
+ ip address 10.100.0.1 255.255.255.252
+```
+
+Then you can run dynamic routing:
+
+```text
+router eigrp 90
+```
+
+or:
+
+```text
+router ospf 1
+```
+
+So for your **Core-Router**, you *could* potentially use an IOL L3 device if all the features you need are supported.
+
+---
+
+# But I Would Not Use IOL L3 for Every Router
+
+Your topology has several different roles.
+
+I recommend this:
+
+| Device        | Recommended Image      |
+| ------------- | ---------------------- |
+| HQ-ASW1       | IOL L2                 |
+| HQ-ASW2       | IOL L2                 |
+| HQ-DSW1       | IOL L3                 |
+| HQ-DSW2       | IOL L3                 |
+| Core-Router   | IOL L3 or Router image |
+| HQ-Router     | Router image           |
+| Branch-Router | Router image           |
+| ISP-Router    | Router image           |
+
+## Why?
+
+Because your HQ-Router and Branch-Router are doing more advanced WAN functions:
+
+```text
+eBGP
+FVRF
+GRE Tunnel
+OSPF
+```
+
+A dedicated router image is the safer choice for those roles.
+
+Your design would look like this:
+
+```text
+                   ISP-Router
+                  [Cisco Router]
+                       |
+                    eBGP
+                       |
+                +------+------+
+                |             |
+           HQ-Router      Branch-Router
+          [Cisco Router]  [Cisco Router]
+                |             |
+             OSPF            OSPF
+                |             |
+              Core
+           [IOL L3]
+             /     \
+            / EIGRP \
+           /         \
+      HQ-DSW1 ===== HQ-DSW2
+       [IOL L3]     [IOL L3]
+          ||           ||
+       EtherChannel / Redundant Links
+          ||           ||
+      HQ-ASW1 ===== HQ-ASW2
+       [IOL L2]      [IOL L2]
+```
+
+This is closer to a realistic design because each device has a clear role.
+
+---
+
+# What About the Linux Servers Instead of Docker?
+
+**Yes, absolutely.**
+
+You do **not need Docker** for this lab unless Docker itself is something you specifically want to practice.
+
+The original requirement was essentially:
+
+> "The network needs a server/lab workload that users can communicate with."
+
+A Linux server can do that perfectly.
+
+You can replace the Docker node with something like:
+
+```text
+Ubuntu Server
+or
+Debian
+or
+Alpine Linux
+```
+
+For example:
+
+```text
+HQ Server VLAN
+10.10.20.0/26
+
+Linux-Server-1
+IP: 10.10.20.10/26
+Gateway: 10.10.20.1
+```
+
+Then install services such as:
+
+```text
+SSH
+HTTP/HTTPS
+DNS
+NTP
+```
+
+This actually gives you **better end-to-end testing**.
+
+For example:
+
+### Test 1 — Layer 3 connectivity
+
+From PC1:
+
+```text
+ping 10.10.20.10
+```
+
+### Test 2 — SSH
+
+```text
+ssh user@10.10.20.10
+```
+
+### Test 3 — HTTP
+
+From a PC or browser:
+
+```text
+http://10.10.20.10
+```
+
+Now you are testing an actual application, not just ICMP.
+
+---
+
+# I Recommend Changing Your Server Design
+
+Instead of this:
+
+```text
+VLAN 40
+Docker Node
+10.10.40.10
+```
+
+You can use:
+
+```text
+VLAN 20 - HQ-SERVERS
+10.10.20.0/26
+```
+
+And place Linux servers there:
+
+```text
+Linux-Web01   → 10.10.20.10
+Linux-DNS01   → 10.10.20.11
+Linux-Test01  → 10.10.20.12
+```
+
+Gateway:
+
+```text
+10.10.20.1
+```
+
+This is more realistic:
+
+```text
+                 HQ Campus
+
+PC1 ── VLAN 10
+          |
+       Access
+          |
+     Distribution
+          |
+       VLAN 20
+          |
+   -----------------
+   |       |       |
+Web01    DNS01   Test01
+ .10      .11      .12
+```
+
+You can still keep VLAN 40 if you want a separate **Linux Lab/Services VLAN**.
+
+For example:
+
+```text
+VLAN 20 = Production Servers
+VLAN 40 = Lab Servers
+```
+
+That gives you more segmentation to practice.
+
+---
+
+# My Recommended Final Device List
+
+## HQ Campus
+
+```text
+HQ-ASW1       Cisco IOL L2
+HQ-ASW2       Cisco IOL L2
+
+HQ-DSW1       Cisco IOL L3
+HQ-DSW2       Cisco IOL L3
+```
+
+## Routing Core
+
+```text
+Core-Router   Cisco IOL L3
+```
+
+**OR**, if you want strict router behavior:
+
+```text
+Core-Router   Cisco Router image
+```
+
+Either can work depending on which features you want to practice.
+
+## WAN
+
+```text
+HQ-Router       Cisco Router
+ISP-Router      Cisco Router
+Branch-Router   Cisco Router
+```
+
+This is my preferred choice because of:
+
+* eBGP
+* VRF/FVRF
+* GRE tunnels
+* WAN routing
+* OSPF
+
+---
+
+# Servers
+
+```text
+Linux-Web01
+Linux-DNS01
+Linux-Test01
+```
+
+You don't need three servers initially. You could start with just:
+
+```text
+Linux-Server01
+```
+
+with:
+
+```text
+IP Address:      10.10.20.10/26
+Default Gateway: 10.10.20.1
+```
+
+Then later add more services as your lab grows.
+
+---
+
+# The Best Way to Think About IOL L3
+
+An IOL L3 device can perform **both switching and routing functions**.
+
+For example:
+
+### As a Layer 2 switch
+
+```text
+VLANs
+Trunks
+EtherChannel
+STP
+```
+
+### As a multilayer switch
+
+```text
+SVIs
+ip routing
+Inter-VLAN routing
+HSRP
+Routed interfaces
+EIGRP
+OSPF
+```
+
+So this:
+
+```text
+IOL L3 = "Layer 3 Switch"
+```
+
+does **not** mean:
+
+```text
+IOL L3 = Always exactly the same as every Cisco router
+```
+
+Instead:
+
+```text
+IOL L3
+     |
+     +-- Layer 2 switching
+     |
+     +-- Layer 3 switching/routing
+```
+
+Whereas a router is designed primarily for:
+
+```text
+Layer 3 routing
+WAN routing
+BGP
+VRFs
+Tunnels
+GRE
+Advanced routing features
+```
+
+---
+
+## My final recommendation for your lab
+
+**Use IOL L2 and IOL L3 heavily.** They are perfect for the campus portion of this project.
+
+```text
+ACCESS       → IOL L2
+DISTRIBUTION → IOL L3
+CORE         → IOL L3 or Router
+WAN          → Router images
+SERVERS      → Linux
+```
+
+That gives you the best combination of **realistic enterprise design, low resource usage, and good CCNP-level practice**.
