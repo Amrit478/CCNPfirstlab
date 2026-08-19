@@ -1,0 +1,909 @@
+Yes — **that is exactly how a real network engineer should start**.
+
+You should **not start by randomly placing routers and switches and configuring technologies**. First, imagine you received requirements from a customer. Then you translate those requirements into:
+
+**Business Requirements → Technical Requirements → Network Design → Implementation Plan → Configuration → Testing**
+
+For your topology, here is a realistic customer scenario that would justify **why you designed the lab this way**.
+
+---
+
+# Customer Network Requirements for This Lab
+
+## 1. Customer Background
+
+The customer is a medium-sized company called **ABC Corporation**.
+
+They have:
+
+* One **Headquarters (HQ)**
+* One **Branch Office**
+* An **Internet Service Provider/WAN provider**
+* Multiple departments at HQ
+* Servers and internal services
+* A need for secure communication between HQ and Branch
+* A requirement for redundancy in the campus network
+* Different routing domains because the network has grown over time
+
+The customer wants a new enterprise network designed so it can:
+
+1. Support current users and devices
+2. Separate departments
+3. Provide redundant switching paths
+4. Continue operating if one network link fails
+5. Connect HQ and Branch securely
+6. Connect to multiple external providers/networks
+7. Support dynamic routing
+8. Scale in the future
+
+---
+
+# Phase 0 — Customer Discovery and Requirements Gathering
+
+Before touching a router or switch, you meet with the customer.
+
+## Customer Requirement 1: Department Separation
+
+The customer says:
+
+> "We have multiple departments. We do not want all computers on one flat network."
+
+### Business requirement
+
+Separate users into different network segments.
+
+### Technical requirement
+
+Use:
+
+* VLANs
+* Separate IP subnets
+* Layer 3 routing between VLANs
+* ACLs later if security policies require communication restrictions
+
+### Why this appears in your design
+
+This is why your LAN starts with switches and VLANs.
+
+For example:
+
+| Department | VLAN | Example Subnet |
+| ---------- | ---: | -------------- |
+| Users      |   10 | 10.10.10.0/24  |
+| Servers    |   20 | 10.10.20.0/24  |
+| Voice      |   30 | 10.10.30.0/24  |
+| Management |   99 | 10.10.99.0/24  |
+
+So the first design decision is:
+
+> **The network cannot be one large Layer 2 broadcast domain.**
+
+Therefore, you build VLANs.
+
+---
+
+# Customer Requirement 2: Redundant Campus Network
+
+The customer says:
+
+> "If one switch or cable fails, we do not want the entire office to lose connectivity."
+
+This is extremely important.
+
+### Business requirement
+
+The network must have redundancy.
+
+### Technical requirement
+
+You design:
+
+* Two distribution switches:
+
+  * `HQ-DSW1`
+  * `HQ-DSW2`
+* Multiple uplinks
+* EtherChannels/Port-Channels
+* Spanning Tree protection
+* First-hop gateway redundancy if required
+
+### Why your topology has multiple switches
+
+Instead of this:
+
+```text
+PCs
+ |
+ASW
+ |
+DSW
+ |
+Router
+```
+
+You design something closer to:
+
+```text
+           HQ-DSW1 -------- HQ-DSW2
+             ||                ||
+             ||                ||
+           HQ-ASW1 -------- HQ-ASW2
+```
+
+The exact physical design can vary, but the customer requirement is:
+
+> **There must not be a single cable failure that disconnects an entire switch block unnecessarily.**
+
+That requirement leads directly to your use of **Port-Channels**.
+
+---
+
+# Customer Requirement 3: Increase Bandwidth Between Switches
+
+The customer says:
+
+> "Our users access servers and applications heavily. A single uplink may become congested."
+
+### Business requirement
+
+Increase available bandwidth and provide link redundancy.
+
+### Technical requirement
+
+Use EtherChannel.
+
+This justifies:
+
+* `Po1`
+* `Po11`
+* `Po12`
+* `Po21`
+* `Po22`
+
+For example:
+
+```text
+DSW1 ===== Port-Channel ===== DSW2
+          Po1
+```
+
+Multiple physical interfaces operate as one logical interface.
+
+### Why not just use five individual links?
+
+Because independent Layer 2 links can create loops.
+
+EtherChannel allows links to be logically bundled.
+
+So your customer requirement becomes:
+
+> **The switching infrastructure must provide additional uplink capacity and survive the loss of an individual physical link.**
+
+---
+
+# Customer Requirement 4: Devices Must Communicate Between VLANs
+
+The customer says:
+
+> "Users in one department need access to shared resources located in another network."
+
+For example:
+
+```text
+VLAN 10 User
+     |
+     |
+Needs access to
+     |
+     v
+VLAN 20 Server
+```
+
+### Technical requirement
+
+The network needs Layer 3 routing.
+
+You therefore configure:
+
+* SVIs on multilayer switches
+* IP addresses for VLAN gateways
+* Dynamic routing between Layer 3 devices
+
+For example:
+
+```text
+interface vlan 10
+ ip address 10.10.10.1 255.255.255.0
+
+interface vlan 20
+ ip address 10.10.20.1 255.255.255.0
+```
+
+This explains why **SVIs belong in Phase 1**.
+
+---
+
+# Customer Requirement 5: The Campus Must Use Dynamic Routing
+
+The customer says:
+
+> "We expect the network to grow. We do not want engineers manually entering every route on every router."
+
+### Business requirement
+
+The internal network must scale.
+
+### Technical requirement
+
+Use a dynamic routing protocol.
+
+For your design, you selected:
+
+**EIGRP AS 90**
+
+between the campus Layer 3 switches and the internal routing infrastructure.
+
+### Why EIGRP here?
+
+In your lab scenario, the company already uses EIGRP internally.
+
+Therefore, you are not choosing EIGRP randomly.
+
+The customer might say:
+
+> "Our existing campus routing domain uses EIGRP AS 90, and the new network must integrate with it."
+
+That is a realistic reason.
+
+Your design becomes:
+
+```text
+HQ VLANs
+   |
+   v
+HQ-DSW1 ===== HQ-DSW2
+      \     /
+       \   /
+      EIGRP AS 90
+         |
+         v
+     Core-Router
+```
+
+---
+
+# Customer Requirement 6: Separate HQ and Branch Routing Domains
+
+The customer has two locations:
+
+```text
+        HQ
+         |
+    Enterprise WAN
+         |
+      Branch
+```
+
+The customer says:
+
+> "HQ and the Branch are separate network locations. We want routing designed in a scalable hierarchical way."
+
+### Technical requirement
+
+Use OSPF with multiple areas.
+
+For example:
+
+* HQ router side → OSPF Area 10
+* Branch router side → OSPF Area 20
+* WAN/transit backbone → OSPF Area 0
+
+This gives a design such as:
+
+```text
+Campus
+  |
+EIGRP 90
+  |
+Core Router
+  |
+Redistribution / Routing Boundary
+  |
+OSPF Area 10
+  |
+HQ Router
+```
+
+And:
+
+```text
+Branch Router
+     |
+OSPF Area 20
+```
+
+---
+
+# Important: Why Use Both EIGRP and OSPF?
+
+This is a very important **customer requirement/design justification**.
+
+You should not say:
+
+> "I used EIGRP and OSPF because I wanted to practice both."
+
+That is fine for a lab, but it is **not a real-world design justification**.
+
+Instead, your customer scenario should be:
+
+> **ABC Corporation has an existing EIGRP AS 90 campus environment at HQ. The company acquired a branch network that uses OSPF. The new enterprise design must allow the two routing domains to communicate.**
+
+Now you have a legitimate reason for:
+
+```text
+EIGRP AS 90
+     |
+     |
+Routing Boundary
+     |
+     |
+OSPF
+```
+
+This also gives you an opportunity to learn:
+
+* Route redistribution
+* Administrative distance
+* Route filtering
+* Route summarization
+* Avoiding routing loops
+
+Those are much more CCNP-level topics.
+
+---
+
+# Customer Requirement 7: Connect to Multiple External Networks
+
+The customer says:
+
+> "We have connectivity through different external autonomous systems/providers."
+
+This is why your diagram contains:
+
+* AS 100
+* AS 200
+* AS 300
+
+### Technical requirement
+
+Use **eBGP** between autonomous systems.
+
+Conceptually:
+
+```text
+Customer/HQ
+ AS 100
+    |
+  eBGP
+    |
+Provider
+ AS 200
+    |
+  eBGP
+    |
+Remote Network
+ AS 300
+```
+
+Now BGP has a real reason to exist.
+
+The requirement is not:
+
+> "Configure BGP because CCNP has BGP."
+
+Instead:
+
+> **The company connects to external autonomous systems and requires policy-based exchange of network reachability information.**
+
+That is why you select eBGP.
+
+---
+
+# Customer Requirement 8: Internet/WAN Must Not Carry Internal Routing Unprotected
+
+The customer says:
+
+> "Traffic between HQ and the Branch may cross an external provider network. We need logical separation and secure transport."
+
+This leads to your WAN overlay.
+
+You selected:
+
+* Front-Door VRF
+* GRE Tunnel
+* OSPF Area 0 across the overlay
+
+---
+
+# Why Front-Door VRF?
+
+The problem can be explained like this.
+
+Your router needs to know two different things:
+
+### Underlay
+
+How do I reach the **tunnel destination through the provider**?
+
+```text
+HQ Router
+    |
+Provider/WAN
+    |
+Branch Router
+```
+
+### Overlay
+
+How do internal networks communicate through the GRE tunnel?
+
+```text
+HQ Internal Networks
+        |
+     GRE Tunnel
+        |
+Branch Internal Networks
+```
+
+FVRF separates the routing used to reach the tunnel destination from routing inside the tunnel.
+
+Conceptually:
+
+```text
+           UNDERLAY
+       FVRF Routing Table
+HQ ---------------------- Branch
+ \                         /
+  \____ Provider Network __/
+
+
+           OVERLAY
+     Global / Overlay Routing
+
+HQ LAN === GRE Tunnel === Branch LAN
+```
+
+This is a more advanced enterprise requirement.
+
+---
+
+# Customer Requirement 9: Dynamic Routing Across the Overlay
+
+The customer says:
+
+> "If we add new branch networks, we do not want to manually configure static routes across every tunnel."
+
+### Technical requirement
+
+Run OSPF across the GRE tunnel.
+
+You selected:
+
+**OSPF Area 0**
+
+for the backbone.
+
+For example:
+
+```text
+HQ-Router
+    |
+    | Tunnel0
+    |
+=============
+ GRE OVERLAY
+=============
+    |
+    | Tunnel0
+    |
+Branch-Router
+```
+
+Then:
+
+```text
+OSPF Area 0
+```
+
+operates across the logical tunnel.
+
+---
+
+# Complete Customer Requirements Document
+
+Here is the complete logical sequence you can use before beginning the lab.
+
+## Business Requirements
+
+### Requirement 1 — Network Segmentation
+
+The company requires departments and network services to be logically separated to reduce broadcast traffic and improve security.
+
+**Solution:**
+
+* VLANs
+* Separate IP subnets
+* SVIs
+
+---
+
+### Requirement 2 — Campus Redundancy
+
+The company requires the headquarters network to remain operational during an individual uplink failure.
+
+**Solution:**
+
+* Dual distribution switches
+* Redundant uplinks
+* EtherChannel
+* Spanning Tree design
+
+---
+
+### Requirement 3 — Increased Uplink Capacity
+
+The company requires sufficient bandwidth between access and distribution layers.
+
+**Solution:**
+
+* Port-Channels
+* `Po1`
+* `Po11`
+* `Po12`
+* `Po21`
+* `Po22`
+
+---
+
+### Requirement 4 — Inter-VLAN Communication
+
+Authorized users must communicate with centralized servers and resources located on different VLANs.
+
+**Solution:**
+
+* Layer 3 switching
+* SVIs
+* Default gateways
+
+---
+
+### Requirement 5 — Scalable Internal Routing
+
+The campus network must automatically learn routes as new networks are added.
+
+**Solution:**
+
+* EIGRP AS 90
+
+---
+
+### Requirement 6 — Integration With Existing Networks
+
+The company has different routing domains due to network growth, acquisitions, or legacy infrastructure.
+
+**Solution:**
+
+* EIGRP in the existing campus
+* OSPF for HQ/Branch routing
+* Route redistribution at controlled boundaries
+
+---
+
+### Requirement 7 — Separate OSPF Regions
+
+HQ and Branch require hierarchical routing.
+
+**Solution:**
+
+* Area 10 → HQ
+* Area 20 → Branch
+* Area 0 → Backbone/overlay
+
+---
+
+### Requirement 8 — External Autonomous System Connectivity
+
+The company exchanges routing information with multiple external autonomous systems.
+
+**Solution:**
+
+* eBGP
+* AS 100
+* AS 200
+* AS 300
+
+---
+
+### Requirement 9 — WAN Overlay
+
+The company requires logical transport between sites over external infrastructure.
+
+**Solution:**
+
+* GRE Tunnel
+
+---
+
+### Requirement 10 — Underlay/Overlay Separation
+
+The company must ensure the WAN path used to reach tunnel endpoints is logically separated from overlay routing.
+
+**Solution:**
+
+* Front-Door VRF
+
+---
+
+# Now Your Build Plan Makes Perfect Sense
+
+Your original phases become the **implementation plan derived from the customer requirements**:
+
+## Phase 1 — LAN & Switching Tier
+
+**Customer requirements addressed:**
+
+* Network segmentation
+* Redundancy
+* Bandwidth
+* Inter-VLAN communication
+
+### Build
+
+```text
+HQ-DSW1
+HQ-DSW2
+HQ-ASW1
+HQ-ASW2
+```
+
+### Configure in this order
+
+1. Basic device configuration
+2. Management connectivity
+3. VLAN creation
+4. Access ports
+5. Trunks
+6. EtherChannel
+7. Port-Channel trunking
+8. STP design
+9. SVIs
+10. Inter-VLAN routing
+11. End-device addressing
+12. Test connectivity
+
+### Validation
+
+```text
+PC → Gateway
+PC1 → PC2
+PC → Docker/Server VLAN
+show vlan brief
+show interfaces trunk
+show etherchannel summary
+show spanning-tree
+show ip interface brief
+```
+
+**Do not move to Phase 2 until Phase 1 works.**
+
+---
+
+# Phase 2 — Enterprise Routing Core
+
+**Customer requirements addressed:**
+
+* Scalable routing
+* Existing EIGRP environment
+* HQ/Branch routing
+* Multiple OSPF areas
+
+### Add
+
+```text
+Core-Router
+HQ-Router
+Branch-Router
+```
+
+### Configure
+
+1. Layer 3 point-to-point addressing
+2. EIGRP AS 90
+3. Verify EIGRP neighbors
+4. Verify EIGRP routes
+5. Configure OSPF Area 10
+6. Configure OSPF Area 20
+7. Configure the Area 0 backbone where appropriate
+8. Configure controlled redistribution if your topology requires EIGRP ↔ OSPF exchange
+9. Summarize routes where appropriate
+10. Filter routes if required
+
+### Validation
+
+```text
+show ip eigrp neighbors
+show ip route eigrp
+show ip ospf neighbor
+show ip route ospf
+show ip route
+```
+
+At this point, your **internal enterprise routing should work before BGP is added**.
+
+---
+
+# Phase 3 — WAN & External Routing
+
+**Customer requirements addressed:**
+
+* External connectivity
+* Multiple autonomous systems
+* WAN reachability
+
+### Add
+
+```text
+ISP-Router
+AS 100
+AS 200
+AS 300
+```
+
+### Configure
+
+1. WAN IP addressing
+2. Basic reachability
+3. eBGP peering
+4. Advertise required prefixes
+5. Verify BGP neighbors
+6. Verify received/advertised routes
+7. Apply policy/filtering if needed
+
+### Validation
+
+```text
+show ip bgp summary
+show ip bgp
+show ip route bgp
+ping WAN interfaces
+traceroute
+```
+
+---
+
+# Phase 4 — WAN Overlay
+
+I would actually recommend separating this from Phase 3.
+
+Your original Phase 3 contains **too many major technologies at once**:
+
+* eBGP
+* FVRF
+* GRE
+* OSPF Area 0
+
+For learning and troubleshooting, make this a separate phase.
+
+### Build
+
+```text
+HQ Router
+    |
+ Underlay / FVRF
+    |
+ISP Network
+    |
+ Underlay / FVRF
+    |
+Branch Router
+```
+
+First verify the underlay.
+
+**Then** build:
+
+```text
+HQ LAN
+   |
+HQ Router
+   |
+ Tunnel0
+=================
+     GRE
+=================
+   |
+ Tunnel0
+   |
+Branch Router
+   |
+Branch LAN
+```
+
+Then configure OSPF across the GRE tunnel.
+
+### Validation
+
+```text
+show vrf
+show ip route vrf <FVRF-NAME>
+show interface tunnel 0
+show ip ospf neighbor
+show ip route
+ping tunnel destination
+```
+
+---
+
+# Final End-to-End Customer Acceptance Test
+
+Only after every individual phase works should you test the complete business requirement:
+
+```text
+PC1
+ |
+HQ-ASW
+ |
+HQ-DSW
+ |
+EIGRP AS 90
+ |
+Core
+ |
+OSPF Area 10
+ |
+HQ Router
+ |
+GRE Overlay / OSPF Area 0
+ |
+Branch Router
+ |
+OSPF Area 20
+ |
+Branch Network
+ |
+PC3
+```
+
+Test:
+
+1. PC1 can reach its default gateway
+2. PC1 can reach HQ servers
+3. Campus routes are learned through EIGRP
+4. HQ/Branch routes are learned through OSPF
+5. eBGP connectivity is established where required
+6. FVRF can reach tunnel endpoints
+7. GRE tunnel is up/up
+8. OSPF neighbor forms across the tunnel
+9. PC1 can ping PC3
+10. Perform a traceroute and verify the expected path
+11. Shut down one redundant physical link and verify EtherChannel continues working
+12. Test route failure/reconvergence
+
+---
+
+## The most important engineering concept
+
+Your design story should always be:
+
+> **Customer requirement → technical requirement → technology selection → design → implementation → validation**
+
+For example:
+
+> **Customer:** "We cannot lose connectivity if one uplink cable fails."
+> **Technical requirement:** Redundant Layer 2 uplinks are required.
+> **Technology:** EtherChannel and STP.
+> **Design:** Dual distribution/access connectivity with Port-Channels.
+> **Implementation:** Configure `Po11`, `Po12`, etc.
+> **Validation:** Shut down one member link and confirm connectivity continues.
+
+One correction I strongly recommend: make your project **4 phases instead of 3**, because troubleshooting **BGP + FVRF + GRE + OSPF all at once** will be unnecessarily difficult. Build and validate the underlay first, then build the overlay on top of it.
