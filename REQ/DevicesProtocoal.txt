@@ -1,0 +1,345 @@
+Yes — **your understanding is mostly correct**, with one important refinement.
+
+A **CSR1000v** is exactly the type of virtual router you would use in a lab for **WAN/edge/advanced routing roles**, while multilayer switches handle much of the internal campus routing.
+
+A realistic design often looks like this:
+
+```text
+                    Internet / ISP
+                          |
+                    +-------------+
+                    | CSR1000v    |
+                    | Edge Router |
+                    +-------------+
+                          |
+                       Firewall
+                          |
+                =====================
+                |                   |
+           Core / L3              Core / L3
+             Switch                Switch
+                |                   |
+          Distribution/Access   Distribution/Access
+                |                   |
+               Users             Servers
+```
+
+## Why the CSR1000v is useful
+
+You would place it where you need features such as:
+
+* BGP
+* Multiple VRFs
+* FVRF
+* GRE tunnels
+* Tunnel interfaces
+* OSPF/EIGRP between networks
+* IPsec/VPN features
+* Route redistribution
+* Advanced route policies
+* WAN/edge routing
+
+So in **your lab**, this makes sense:
+
+```text
+                    ISP
+                      |
+                CSR1000v
+                ISP Router
+                      |
+                  eBGP
+                 /    \
+                /      \
+        CSR1000v        CSR1000v
+         HQ Edge         Branch Edge
+             \            /
+              \   GRE    /
+               ==========
+                  |
+               OSPF
+```
+
+Then behind the edge:
+
+```text
+             HQ EDGE
+             CSR1000v
+                 |
+              OSPF
+                 |
+               CORE
+              IOL L3
+              /      \
+             /        \
+        HQ-DSW1 ===== HQ-DSW2
+         IOL L3       IOL L3
+            |            |
+        HQ-ASW1       HQ-ASW2
+         IOL L2        IOL L2
+```
+
+That is a **very logical use of the devices**.
+
+---
+
+# Your other point: "Why don't companies use routers everywhere?"
+
+Correct. **Most enterprise networks do not need a router between every switch or VLAN.**
+
+A modern multilayer switch can do this:
+
+```text
+VLAN 10 ──┐
+          │
+VLAN 20 ──┼── IOL/Catalyst L3 Switch ── Routing
+          │
+VLAN 30 ──┘
+```
+
+The L3 switch can provide:
+
+* Default gateways using SVIs
+* Inter-VLAN routing
+* OSPF
+* EIGRP
+* Static routes
+* HSRP/VRRP
+* ACLs
+
+And it does so at high speed inside the LAN.
+
+Therefore, a typical small/medium enterprise might look like:
+
+```text
+Internet
+   |
+ISP Modem/ONT
+   |
+Firewall
+   |
+L3 Switch
+   |
+-------------------------
+|           |           |
+Access      Access     Servers
+Switch      Switch
+Switch
+```
+
+In this design, the **firewall is usually the security boundary**, while the L3 switch handles internal routing.
+
+---
+
+# The important correction: BGP is not only for ISPs
+
+This part needs a small correction.
+
+You said:
+
+> "We do not do a lot of routing unless you are an ISP."
+
+Not exactly.
+
+**Almost every medium or large enterprise does routing internally.** For example:
+
+```text
+Users VLAN
+     |
+Servers VLAN
+     |
+Voice VLAN
+     |
+Guest VLAN
+     |
+Data Center
+     |
+Branch Office
+```
+
+Traffic between these Layer 3 networks requires routing.
+
+But that routing may happen on:
+
+* Multilayer switches
+* Firewalls
+* Routers
+* SD-WAN devices
+
+So the better statement is:
+
+> **Most enterprises do plenty of routing, but they do not necessarily need dedicated routers everywhere.**
+
+And:
+
+> **BGP is not only used by ISPs. Enterprises may use BGP for ISP connectivity, multiple providers, data centers, cloud connectivity, MPLS, or large-scale routing designs.**
+
+For example:
+
+```text
+                   Enterprise
+                       |
+              +--------+--------+
+              |                 |
+             ISP 1             ISP 2
+            AS 100            AS 200
+              |                 |
+            eBGP              eBGP
+              \                 /
+               Enterprise Edge
+```
+
+An enterprise may use BGP even though it is **not an ISP**.
+
+---
+
+# Where each device belongs in your lab
+
+This is the model I recommend for you:
+
+| Network Role       | Device         |
+| ------------------ | -------------- |
+| Access layer       | Cisco IOL L2   |
+| Distribution layer | Cisco IOL L3   |
+| Campus core        | Cisco IOL L3   |
+| HQ WAN Edge        | CSR1000v       |
+| Branch WAN Edge    | CSR1000v       |
+| ISP                | CSR1000v       |
+| Security boundary  | Firewall image |
+| Servers            | Linux          |
+
+### Why?
+
+### IOL L2
+
+Handles:
+
+```text
+PCs
+VLANs
+Access Ports
+Trunks
+STP
+EtherChannel
+```
+
+### IOL L3
+
+Handles:
+
+```text
+SVIs
+Inter-VLAN Routing
+HSRP
+OSPF
+EIGRP
+Internal Routing
+Route Redistribution
+ACLs
+```
+
+### CSR1000v
+
+Handles your advanced edge/WAN requirements:
+
+```text
+BGP
+VRF
+FVRF
+GRE
+Tunnels
+IPsec/VPN
+Advanced Routing Policies
+WAN Routing
+```
+
+### Firewall
+
+Handles:
+
+```text
+Security Policies
+NAT
+VPN
+Traffic Inspection
+Internet Security
+Segmentation
+```
+
+---
+
+# The biggest concept you just discovered
+
+You are now understanding **network roles**, rather than thinking:
+
+> "I need to put routers here because routers do routing."
+
+Instead, the engineering question is:
+
+> **What function does this part of the network need?**
+
+For example:
+
+### Access layer
+
+Needs lots of Layer 2 ports:
+
+```text
+→ L2 Switch
+```
+
+### Distribution layer
+
+Needs switching **and** routing:
+
+```text
+→ L3 Switch
+```
+
+### WAN edge
+
+Needs advanced WAN and routing functions:
+
+```text
+→ Router / CSR1000v
+```
+
+### Internet boundary
+
+Needs security inspection:
+
+```text
+→ Firewall
+```
+
+That is much closer to how you should think when designing enterprise networks.
+
+## For your lab, the architecture should be:
+
+```text
+                         AS 200
+                       ISP CSR1000v
+                      /           \
+                 eBGP/             \eBGP
+                    /               \
+          HQ EDGE CSR1000v      BRANCH EDGE CSR1000v
+             AS 100                 AS 300
+                |                       |
+              OSPF                    OSPF
+                |                       |
+             CORE                     Branch L3
+            IOL L3                     Switch
+                |
+          EIGRP Boundary
+                |
+       +--------+--------+
+       |                 |
+   HQ-DSW1             HQ-DSW2
+    IOL L3              IOL L3
+       |                 |
+   HQ-ASW1             HQ-ASW2
+    IOL L2              IOL L2
+       |                 |
+      PCs             Servers
+```
+
+So yes: **this is exactly where CSR1000v becomes valuable in your lab**. Use the L3 switches for campus routing and switching, and use CSR1000v devices where you want to practice the advanced **WAN/edge technologies** you listed.
